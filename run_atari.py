@@ -1,8 +1,10 @@
+import os
 import models
 import bench
 import argparse
 import logger
-from common import set_global_seeds
+from simple import learn, load
+from common import set_global_seeds, wrap_atari_dqn
 from common.atari_wrappers import make_atari
 
 
@@ -22,30 +24,33 @@ def main():
     set_global_seeds(args.seed)
     env = make_atari(args.env)
     env = bench.Monitor(env, logger.get_dir())
-    env = deepq.wrap_atari_dqn(env)
+    env = wrap_atari_dqn(env)
     model = models.cnn_to_mlp(
         convs=[(32, 8, 4), (64, 4, 2), (64, 3, 1)],
         hiddens=[256],
         dueling=bool(args.dueling),
     )
+    checkpoint_path = "models/{}/".format(args.env.split(sep="-lvl")[0])
+    if args.checkpoint_path is not None:
+        checkpoint_path = args.checkpoint_path
+    os.makedirs(checkpoint_path, exist_ok=True)
 
-    deepq.learn(
-        env,
-        q_func=model,
-        lr=1e-4,
-        max_timesteps=args.num_timesteps,
-        buffer_size=10000,
-        exploration_fraction=0.1,
-        exploration_final_eps=0.01,
-        train_freq=4,
-        learning_starts=10000,
-        target_network_update_freq=1000,
-        gamma=0.99,
-        prioritized_replay=bool(args.prioritized),
-        prioritized_replay_alpha=args.prioritized_replay_alpha,
-        checkpoint_freq=args.checkpoint_freq,
-        checkpoint_path=args.checkpoint_path,
-    )
+    learn(env,
+          q_func=model,
+          lr=1e-4,
+          max_timesteps=args.num_timesteps,
+          buffer_size=10000,
+          exploration_fraction=0.1,
+          exploration_final_eps=0.01,
+          train_freq=4,
+          learning_starts=10000,
+          target_network_update_freq=1000,
+          gamma=0.99,
+          prioritized_replay=bool(args.prioritized),
+          prioritized_replay_alpha=args.prioritized_replay_alpha,
+          checkpoint_freq=args.checkpoint_freq,
+          checkpoint_path=checkpoint_path
+          )
 
     env.close()
 

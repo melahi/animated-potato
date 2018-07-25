@@ -6,15 +6,15 @@ import zipfile
 import cloudpickle
 import numpy as np
 
-import baselines.common.tf_util as U
-from baselines.common.tf_util import load_state, save_state
-from baselines import logger
-from baselines.common.schedules import LinearSchedule
-from baselines.common.input import observation_input
+import common.tf_util as U
+from common.tf_util import load_state, save_state
+import logger
+from common.schedules import LinearSchedule
+from common.input import observation_input
 
-from baselines import deepq
-from baselines.deepq.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
-from baselines.deepq.utils import ObservationInput
+from build_graph import build_act, build_train
+from replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
+from utils import ObservationInput
 
 
 class ActWrapper(object):
@@ -177,7 +177,7 @@ def learn(env,
     def make_obs_ph(name):
         return ObservationInput(env.observation_space, name=name)
 
-    act, train, update_target, debug = deepq.build_train(
+    act, train, update_target, debug = build_train(
         make_obs_ph=make_obs_ph,
         q_func=q_func,
         num_actions=env.action_space.n,

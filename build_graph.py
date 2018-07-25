@@ -94,7 +94,7 @@ The functions in this file can are used to create the following functions:
 
 """
 import tensorflow as tf
-import baselines.common.tf_util as U
+import common.tf_util as U
 
 
 def scope_vars(scope, trainable_only=False):

@@ -4,13 +4,13 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
 
-import baselines.common.tf_util as U
+import common.tf_util as U
 
 from baselines import logger
 from baselines import deepq
-from baselines.deepq.replay_buffer import ReplayBuffer
-from baselines.deepq.utils import ObservationInput
-from baselines.common.schedules import LinearSchedule
+from deepq.replay_buffer import ReplayBuffer
+from deepq.utils import ObservationInput
+from common.schedules import LinearSchedule
 
 
 def model(inpt, num_actions, scope, reuse=False):

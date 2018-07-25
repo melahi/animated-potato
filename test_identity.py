@@ -2,7 +2,7 @@ import tensorflow as tf
 import random
 
 from baselines import deepq
-from baselines.common.identity_env import IdentityEnv
+from common.identity_env import IdentityEnv
 
 
 def test_identity():
