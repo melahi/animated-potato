@@ -10,6 +10,7 @@ future==0.16.0
 gast==0.2.0
 grpcio==1.13.0
 gym==0.10.5
+-e git+https://github.com/rubenrtorrado/GVGAI_GYM.git@42e71b02a373a363feb8796f4eaf7dd4ecbbcff7#egg=gym_gvgai
 html5lib==0.9999999
 idna==2.7
 joblib==0.12.1
@@ -17,6 +18,7 @@ Markdown==2.6.11
 mpi4py==3.0.0
 numpy==1.15.0
 opencv-python==3.4.2.17
+pkg-resources==0.0.0
 progressbar2==3.38.0
 protobuf==3.6.0
 pyglet==1.3.2
