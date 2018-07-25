@@ -1,4 +1,5 @@
 import os
+import signal
 import tempfile
 
 import tensorflow as tf
@@ -10,11 +11,19 @@ import common.tf_util as U
 from common.tf_util import load_state, save_state
 import logger
 from common.schedules import LinearSchedule
-from common.input import observation_input
 
 from build_graph import build_act, build_train
 from replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 from utils import ObservationInput
+
+
+TERMINATE_LEARNING = False
+
+
+def signal_handler(signal_id, frame):
+    global TERMINATE_LEARNING
+    TERMINATE_LEARNING = True
+    print("We should terminate the learning process ...")
 
 
 class ActWrapper(object):
@@ -26,7 +35,7 @@ class ActWrapper(object):
     def load(path):
         with open(path, "rb") as f:
             model_data, act_params = cloudpickle.load(f)
-        act = deepq.build_act(**act_params)
+        act = build_act(**act_params)
         sess = tf.Session()
         sess.__enter__()
         with tempfile.TemporaryDirectory() as td:
@@ -220,6 +229,9 @@ def learn(env,
     obs = env.reset()
     reset = True
 
+    signal.signal(signal.SIGQUIT, signal_handler)
+    global TERMINATE_LEARNING
+
     with tempfile.TemporaryDirectory() as td:
         td = checkpoint_path or td
 
@@ -231,6 +243,9 @@ def learn(env,
             model_saved = True
 
         for t in range(max_timesteps):
+            if TERMINATE_LEARNING:
+                break
+
             if callback is not None:
                 if callback(locals(), globals()):
                     break
