@@ -21,20 +21,32 @@ class ReplayBuffer(object):
     def __len__(self):
         return len(self._storage)
 
-    def add(self, obs_t, action, reward, obs_tp1, done):
-        data = (obs_t, action, reward, obs_tp1, done)
+    def add(self, obs_t, action, reward, obs_tp1, done, is_permanent=False):
+        data = (obs_t, action, reward, obs_tp1, done, is_permanent)
 
         if self._next_idx >= len(self._storage):
             self._storage.append(data)
         else:
             self._storage[self._next_idx] = data
-        self._next_idx = (self._next_idx + 1) % self._maxsize
+        self._next_idx = self.__find_next_not_permanent_index(index=self._next_idx)
+
+    def __find_next_not_permanent_index(self, index):
+        index = (index + 1) % self._maxsize
+        if len(self._storage) <= index:
+            # In this case all capacity of the storage is not used yet; so the next free slot can be used.
+            return index
+
+        # In this case all capacity of the storage is used; so we should find the next volatile experience index to
+        # overwrite on it.
+        while self._storage[index][-1]:  # NOTE: The last index of experience should denote permanency.
+            index = (index + 1) % self._maxsize
+        return index
 
     def _encode_sample(self, idxes):
         obses_t, actions, rewards, obses_tp1, dones = [], [], [], [], []
         for i in idxes:
             data = self._storage[i]
-            obs_t, action, reward, obs_tp1, done = data
+            obs_t, action, reward, obs_tp1, done, _ = data
             obses_t.append(np.array(obs_t, copy=False))
             actions.append(np.array(action, copy=False))
             rewards.append(reward)
