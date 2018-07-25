@@ -226,6 +226,8 @@ def learn(env,
         else:
             replay_buffer = ReplayBuffer(buffer_size)
         beta_schedule = None
+
+    policy_path = os.path.join(checkpoint_path, "Policy.pkl")
     # Create the schedule for exploration starting from 1.
     exploration = LinearSchedule(schedule_timesteps=int(exploration_fraction * max_timesteps),
                                  initial_p=1.0,
@@ -322,6 +324,7 @@ def learn(env,
                         logger.log("Saving model due to mean reward increase: {} -> {}".format(
                                    saved_mean_reward, mean_100ep_reward))
                     save_state(model_file)
+                    act.save(policy_path)
                     model_saved = True
                     saved_mean_reward = mean_100ep_reward
         if model_saved:
