@@ -1,5 +1,6 @@
 import os
 import signal
+import pickle
 import tempfile
 
 import tensorflow as tf
@@ -206,14 +207,24 @@ def learn(env,
 
     # Create the replay buffer
     if prioritized_replay:
-        replay_buffer = PrioritizedReplayBuffer(buffer_size, alpha=prioritized_replay_alpha)
+        replay_buffer_path = os.path.join(checkpoint_path, "Prioritized_replay.pkl")
+        if os.path.isfile(replay_buffer_path):
+            with open(replay_buffer_path, 'rb') as input_file:
+                replay_buffer = pickle.load(input_file)
+        else:
+            replay_buffer = PrioritizedReplayBuffer(buffer_size, alpha=prioritized_replay_alpha)
         if prioritized_replay_beta_iters is None:
             prioritized_replay_beta_iters = max_timesteps
         beta_schedule = LinearSchedule(prioritized_replay_beta_iters,
                                        initial_p=prioritized_replay_beta0,
                                        final_p=1.0)
     else:
-        replay_buffer = ReplayBuffer(buffer_size)
+        replay_buffer_path = os.path.join(checkpoint_path, "Normal_replay.pkl")
+        if os.path.isfile(replay_buffer_path):
+            with open(replay_buffer_path, 'rb') as input_file:
+                replay_buffer = pickle.load(input_file)
+        else:
+            replay_buffer = ReplayBuffer(buffer_size)
         beta_schedule = None
     # Create the schedule for exploration starting from 1.
     exploration = LinearSchedule(schedule_timesteps=int(exploration_fraction * max_timesteps),
@@ -317,5 +328,8 @@ def learn(env,
             if print_freq is not None:
                 logger.log("Restored model with mean reward: {}".format(saved_mean_reward))
             load_state(model_file)
+
+        with open(replay_buffer_path, 'wb') as output_file:
+            pickle.dump(replay_buffer, output_file, pickle.HIGHEST_PROTOCOL)
 
     return act
