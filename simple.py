@@ -16,6 +16,7 @@ from common.schedules import LinearSchedule
 from build_graph import build_act, build_train
 from replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 from utils import ObservationInput
+from expert_decision_maker import ExpertDecisionMaker
 
 
 TERMINATE_LEARNING = False
@@ -177,6 +178,7 @@ def learn(env,
         See header of baselines/deepq/categorical.py for details on the act function.
     """
     # Create all the functions necessary to train the model
+    expert_decision_maker = ExpertDecisionMaker(env=env)
 
     sess = tf.Session()
     sess.__enter__()
@@ -255,6 +257,8 @@ def learn(env,
             logger.log('Loaded model from {}'.format(model_file))
             model_saved = True
 
+        action = env_action = None
+        decide_by_expert = True
         for t in range(max_timesteps):
             if TERMINATE_LEARNING:
                 break
@@ -262,27 +266,34 @@ def learn(env,
             if callback is not None:
                 if callback(locals(), globals()):
                     break
-            # Take action and update exploration to the newest value
-            kwargs = {}
-            if not param_noise:
-                update_eps = exploration.value(t)
-                update_param_noise_threshold = 0.
-            else:
-                update_eps = 0.
-                # Compute the threshold such that the KL divergence between perturbed and non-perturbed
-                # policy is comparable to eps-greedy exploration with eps = exploration.value(t).
-                # See Appendix C.1 in Parameter Space Noise for Exploration, Plappert et al., 2017
-                # for detailed explanation.
-                update_param_noise_threshold = -np.log(1. - exploration.value(t) + exploration.value(t) / float(env.action_space.n))
-                kwargs['reset'] = reset
-                kwargs['update_param_noise_threshold'] = update_param_noise_threshold
-                kwargs['update_param_noise_scale'] = True
-            action = act(np.array(obs)[None], update_eps=update_eps, **kwargs)[0]
-            env_action = action
+            if decide_by_expert:
+                env.render()
+                action = env_action = expert_decision_maker.decide()
+                if env_action is None:
+                    decide_by_expert = False
+                    print("Expert became tired ...")
+            if not decide_by_expert:
+                # Take action and update exploration to the newest value
+                kwargs = {}
+                if not param_noise:
+                    update_eps = exploration.value(t)
+                    update_param_noise_threshold = 0.
+                else:
+                    update_eps = 0.
+                    # Compute the threshold such that the KL divergence between perturbed and non-perturbed
+                    # policy is comparable to eps-greedy exploration with eps = exploration.value(t).
+                    # See Appendix C.1 in Parameter Space Noise for Exploration, Plappert et al., 2017
+                    # for detailed explanation.
+                    update_param_noise_threshold = -np.log(1. - exploration.value(t) + exploration.value(t) / float(env.action_space.n))
+                    kwargs['reset'] = reset
+                    kwargs['update_param_noise_threshold'] = update_param_noise_threshold
+                    kwargs['update_param_noise_scale'] = True
+                action = act(np.array(obs)[None], update_eps=update_eps, **kwargs)[0]
+                env_action = action
             reset = False
             new_obs, rew, done, _ = env.step(env_action)
             # Store transition in the replay buffer.
-            replay_buffer.add(obs, action, rew, new_obs, float(done))
+            replay_buffer.add(obs, action, rew, new_obs, float(done), decide_by_expert)
             obs = new_obs
 
             episode_rewards[-1] += rew
