@@ -335,7 +335,7 @@ def learn(env,
                         logger.log("Saving model due to mean reward increase: {} -> {}".format(
                                    saved_mean_reward, mean_100ep_reward))
                     save_state(model_file)
-                    act.save(policy_path)
+                    # act.save(policy_path)
                     model_saved = True
                     saved_mean_reward = mean_100ep_reward
         if model_saved:
