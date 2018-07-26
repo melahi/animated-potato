@@ -56,6 +56,33 @@ class FireResetEnv(gym.Wrapper):
     def step(self, ac):
         return self.env.step(ac)
 
+class ActionDirectionEnv(gym.Wrapper):
+    def __init__(self, env, initial_direction):
+        """Make end-of-life == end-of-episode, but only reset on true game over.
+        Done by DeepMind for the DQN and co. since it helps value estimation.
+        """
+        gym.Wrapper.__init__(self, env)
+        self.lives = 0
+        self.was_real_done = True
+        self.__initial_direction = initial_direction
+        self.__direction = self.__initial_direction
+        assert env.unwrapped.get_action_meanings[0] == 'ACTION_NIL', "We assume the first action should be no op action"
+        assert env.unwrapped.get_action_meanings[1] == 'ACTION_USE', "We assume the first action should be use action"
+
+    def reset(self, **kwargs):
+        game_screen = self.env.reset(**kwargs)
+        self.__direction = self.__initial_direction
+        obs = {'game_screen': game_screen, 'action_direction': self.__direction}
+        return obs
+
+    def step(self, action):
+        game_screen, reward, done, info = self.env.step(action)
+        if action > 1:
+            self.__direction = action
+        obs = {'game_screen': game_screen, 'action_direction': self.__direction}
+        return obs, reward, done, info
+
+
 class EpisodicLifeEnv(gym.Wrapper):
     def __init__(self, env):
         """Make end-of-life == end-of-episode, but only reset on true game over.
