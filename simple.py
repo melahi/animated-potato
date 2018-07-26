@@ -102,7 +102,7 @@ def learn(env,
           batch_size=32,
           print_freq=100,
           checkpoint_freq=10000,
-          checkpoint_path=None,
+          model_dir=None,
           learning_starts=1000,
           gamma=1.0,
           target_network_update_freq=500,
@@ -187,8 +187,10 @@ def learn(env,
     # capture the shape outside the closure so that the env object is not serialized
     # by cloudpickle when serializing make_obs_ph
 
+    observation_space = env.observation_space
+
     def make_obs_ph(name):
-        return ObservationInput(env.observation_space, name=name)
+        return ObservationInput(observation_space, name=name)
 
     act, train, update_target, debug = build_train(
         make_obs_ph=make_obs_ph,
@@ -210,7 +212,7 @@ def learn(env,
 
     # Create the replay buffer
     if prioritized_replay:
-        replay_buffer_path = os.path.join(checkpoint_path, "Prioritized_replay.pkl")
+        replay_buffer_path = os.path.join(model_dir, "Prioritized_replay.pkl")
         if os.path.isfile(replay_buffer_path):
             with open(replay_buffer_path, 'rb') as input_file:
                 replay_buffer = pickle.load(input_file)
@@ -222,7 +224,7 @@ def learn(env,
                                        initial_p=prioritized_replay_beta0,
                                        final_p=1.0)
     else:
-        replay_buffer_path = os.path.join(checkpoint_path, "Normal_replay.pkl")
+        replay_buffer_path = os.path.join(model_dir, "Normal_replay.pkl")
         if os.path.isfile(replay_buffer_path):
             with open(replay_buffer_path, 'rb') as input_file:
                 replay_buffer = pickle.load(input_file)
@@ -230,7 +232,7 @@ def learn(env,
             replay_buffer = ReplayBuffer(buffer_size)
         beta_schedule = None
 
-    policy_path = os.path.join(checkpoint_path, "Policy.pkl")
+    policy_path = os.path.join(model_dir, "Policy.pkl")
     # Create the schedule for exploration starting from 1.
     exploration = LinearSchedule(schedule_timesteps=int(exploration_fraction * max_timesteps),
                                  initial_p=1.0,
@@ -249,9 +251,9 @@ def learn(env,
     global TERMINATE_LEARNING
 
     with tempfile.TemporaryDirectory() as td:
-        td = checkpoint_path or td
+        td = model_dir or td
 
-        model_file = os.path.join(td, "model")
+        model_file = os.path.join(td, "model", "checkpoint")
         model_saved = False
         if tf.train.latest_checkpoint(td) is not None:
             load_state(model_file)
@@ -340,7 +342,7 @@ def learn(env,
                         logger.log("Saving model due to mean reward increase: {} -> {}".format(
                                    saved_mean_reward, mean_100ep_reward))
                     save_state(model_file)
-                    # act.save(policy_path)
+                    act.save(policy_path)
                     model_saved = True
                     saved_mean_reward = mean_100ep_reward
         if model_saved:

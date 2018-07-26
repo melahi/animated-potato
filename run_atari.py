@@ -17,7 +17,7 @@ def main():
     parser.add_argument('--dueling', type=int, default=1)
     parser.add_argument('--num-timesteps', type=int, default=int(10e6))
     parser.add_argument('--checkpoint-freq', type=int, default=10000)
-    parser.add_argument('--checkpoint-path', type=str, default=None)
+    parser.add_argument('--model_dir', type=str, default=None)
 
     initial_direction = {'gvgai-testgame1': 5, 'gvgai-testgame2': 3}
 
@@ -42,10 +42,10 @@ def main():
             hiddens=[256],
             dueling=bool(args.dueling),
         )
-    checkpoint_path = "models/{}/".format(game_name)
-    if args.checkpoint_path is not None:
-        checkpoint_path = args.checkpoint_path
-    os.makedirs(checkpoint_path, exist_ok=True)
+    model_dir = "models/{}/".format(game_name)
+    if args.model_dir is not None:
+        model_dir = args.model_dir
+    os.makedirs(model_dir, exist_ok=True)
 
     learn(env,
           q_func=model,
@@ -61,7 +61,7 @@ def main():
           prioritized_replay=bool(args.prioritized),
           prioritized_replay_alpha=args.prioritized_replay_alpha,
           checkpoint_freq=args.checkpoint_freq,
-          checkpoint_path=checkpoint_path
+          model_dir=model_dir
           )
 
     env.close()
