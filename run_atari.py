@@ -5,7 +5,7 @@ import argparse
 import logger
 from simple import learn, load
 from common import set_global_seeds, wrap_atari_dqn
-from common.atari_wrappers import make_atari
+from common.atari_wrappers import make_atari, ActionDirectionEnv
 
 
 def main():
@@ -19,18 +19,30 @@ def main():
     parser.add_argument('--checkpoint-freq', type=int, default=10000)
     parser.add_argument('--checkpoint-path', type=str, default=None)
 
+    initial_direction = {'gvgai-testgame1': 5, 'gvgai-testgame2': 3}
+
     args = parser.parse_args()
     logger.configure()
     set_global_seeds(args.seed)
     env = make_atari(args.env)
     env = bench.Monitor(env, logger.get_dir())
     env = wrap_atari_dqn(env)
-    model = models.cnn_to_mlp(
-        convs=[(32, 8, 4), (64, 4, 2), (64, 3, 1)],
-        hiddens=[256],
-        dueling=bool(args.dueling),
-    )
-    checkpoint_path = "models/{}/".format(args.env.split(sep="-lvl")[0])
+    game_name = args.env.split('-lvl')[0]
+    if game_name in initial_direction:
+        print("We should model with action direction")
+        env = ActionDirectionEnv(env, initial_direction=initial_direction[game_name])
+        model = models.cnn_to_mlp_with_action_direction(
+            convs=[(32, 8, 4), (64, 4, 2), (64, 3, 1)],
+            hiddens=[256],
+            dueling=bool(args.dueling),
+        )
+    else:
+        model = models.cnn_to_mlp(
+            convs=[(32, 8, 4), (64, 4, 2), (64, 3, 1)],
+            hiddens=[256],
+            dueling=bool(args.dueling),
+        )
+    checkpoint_path = "models/{}/".format(game_name)
     if args.checkpoint_path is not None:
         checkpoint_path = args.checkpoint_path
     os.makedirs(checkpoint_path, exist_ok=True)

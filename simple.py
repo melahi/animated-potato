@@ -8,6 +8,7 @@ import zipfile
 import cloudpickle
 import numpy as np
 
+import utils
 import common.tf_util as U
 from common.tf_util import load_state, save_state
 import logger
@@ -288,7 +289,12 @@ def learn(env,
                     kwargs['reset'] = reset
                     kwargs['update_param_noise_threshold'] = update_param_noise_threshold
                     kwargs['update_param_noise_scale'] = True
-                action = act(np.array(obs)[None], update_eps=update_eps, **kwargs)[0]
+                prepared_obs = utils.appending(None, obs)
+                if type(prepared_obs) == dict:
+                    prepared_obs = {key: np.array(value, copy=False) for key, value in prepared_obs.items()}
+                else:
+                    prepared_obs = np.array(prepared_obs, copy=False)
+                action = act(prepared_obs, update_eps=update_eps, **kwargs)[0]
                 env_action = action
             reset = False
             new_obs, rew, done, _ = env.step(env_action)
@@ -301,7 +307,6 @@ def learn(env,
                 obs = env.reset()
                 episode_rewards.append(0.0)
                 reset = True
-
             if t > learning_starts and t % train_freq == 0:
                 # Minimize the error in Bellman's equation on a batch sampled from replay buffer.
                 if prioritized_replay:

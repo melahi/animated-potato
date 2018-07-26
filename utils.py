@@ -1,6 +1,20 @@
 from common.input import observation_input
 
+import numpy as np
 import tensorflow as tf
+
+
+def appending(destination, source_element):
+    if type(source_element) == dict:
+        if destination is None:
+            destination = {key: list() for key in source_element}
+        for key in source_element:
+            destination[key].append(np.array(source_element[key], copy=False))
+    else:
+        if destination is None:
+            destination = list()
+        destination.append(np.array(source_element, copy=False))
+    return destination
 
 # ================================================================
 # Placeholders
@@ -21,22 +35,27 @@ class TfInput(object):
         """
         raise NotImplemented()
 
-    def make_feed_dict(data):
+    def make_feed_dict(self, data):
         """Given data input it to the placeholder(s)."""
         raise NotImplemented()
 
 
 class PlaceholderTfInput(TfInput):
-    def __init__(self, placeholder):
+    def __init__(self, placeholder, name):
         """Wrapper for regular tensorflow placeholder."""
-        super().__init__(placeholder.name)
+        super().__init__(name)
         self._placeholder = placeholder
 
     def get(self):
         return self._placeholder
 
     def make_feed_dict(self, data):
-        return {self._placeholder: data}
+        if type(data) != dict:
+            return {self._placeholder: data}
+        feed_dict = dict()
+        for key in data:
+            feed_dict[self._placeholder[key]] = data[key]
+        return feed_dict
 
 
 class Uint8Input(PlaceholderTfInput):
@@ -75,7 +94,7 @@ class ObservationInput(PlaceholderTfInput):
                 tensorflow name of the underlying placeholder
         """
         inpt, self.processed_inpt = observation_input(observation_space, name=name)
-        super().__init__(inpt)
+        super().__init__(inpt, name)
 
     def get(self):
         return self.processed_inpt

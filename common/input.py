@@ -24,7 +24,16 @@ def observation_input(ob_space, batch_size=None, name='Ob'):
         processed_x = tf.to_float(input_x)
         return input_x, processed_x
 
+    elif isinstance(ob_space, dict):
+        input_shape = (batch_size,) + ob_space['game_screen'].shape
+        input_x = dict()
+        processed_x = dict()
+        input_x['game_screen'] = tf.placeholder(shape=input_shape, dtype=ob_space['game_screen'].dtype, name=name)
+        input_x['action_direction'] = tf.placeholder(shape=(batch_size,), dtype=tf.uint8, name=name)
+        processed_x['game_screen'] = tf.to_float(input_x['game_screen'])
+        processed_x['action_direction'] = input_x['action_direction']
+        return input_x, processed_x
+
     else:
         raise NotImplementedError
 
- 

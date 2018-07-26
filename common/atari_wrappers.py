@@ -58,16 +58,13 @@ class FireResetEnv(gym.Wrapper):
 
 class ActionDirectionEnv(gym.Wrapper):
     def __init__(self, env, initial_direction):
-        """Make end-of-life == end-of-episode, but only reset on true game over.
-        Done by DeepMind for the DQN and co. since it helps value estimation.
-        """
         gym.Wrapper.__init__(self, env)
-        self.lives = 0
-        self.was_real_done = True
         self.__initial_direction = initial_direction
         self.__direction = self.__initial_direction
-        assert env.unwrapped.get_action_meanings[0] == 'ACTION_NIL', "We assume the first action should be no op action"
-        assert env.unwrapped.get_action_meanings[1] == 'ACTION_USE', "We assume the first action should be use action"
+        self.observation_space = {'game_screen': env.observation_space, 'action_direction': env.action_space}
+        action_meanings = env.unwrapped.get_action_meanings()
+        assert action_meanings[0] == 'ACTION_NIL', "We assume the first action should be no op action"
+        assert action_meanings[1] == 'ACTION_USE', "We assume the first action should be use action"
 
     def reset(self, **kwargs):
         game_screen = self.env.reset(**kwargs)
