@@ -52,4 +52,6 @@ class ExpertDecisionMaker:
             print("{}) {} := ".format(action_index, action), end="", flush=True)
             key = self.__keyboard_handler.get_key()
             print(key)
+            if key is None:
+                return
             self.__key_to_action[key] = action_index
