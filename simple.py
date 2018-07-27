@@ -253,7 +253,7 @@ def learn(env,
     with tempfile.TemporaryDirectory() as td:
         td = model_dir or td
 
-        model_file = os.path.join(td, "model", "checkpoint")
+        model_file = os.path.join(td, "model", "model")
         model_saved = False
         if tf.train.latest_checkpoint(td) is not None:
             load_state(model_file)
