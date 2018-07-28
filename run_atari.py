@@ -1,11 +1,8 @@
 import os
 import models
-import bench
 import argparse
-import logger
-from simple import learn, load
-from common import set_global_seeds, wrap_atari_dqn
-from common.atari_wrappers import make_atari, ActionDirectionEnv
+from simple import learn
+from common import set_global_seeds, create_gvgai_environment
 
 
 def main():
@@ -19,18 +16,10 @@ def main():
     parser.add_argument('--checkpoint-freq', type=int, default=10000)
     parser.add_argument('--model_dir', type=str, default=None)
 
-    initial_direction = {'gvgai-testgame1': 5, 'gvgai-testgame2': 3}
-
     args = parser.parse_args()
-    logger.configure()
     set_global_seeds(args.seed)
-    env = make_atari(args.env)
-    env = bench.Monitor(env, logger.get_dir())
-    env = wrap_atari_dqn(env)
-    game_name = args.env.split('-lvl')[0]
-    if game_name in initial_direction:
-        print("We should model with action direction")
-        env = ActionDirectionEnv(env, initial_direction=initial_direction[game_name])
+    env, does_need_action_direction, game_name = create_gvgai_environment()
+    if does_need_action_direction:
         model = models.cnn_to_mlp_with_action_direction(
             convs=[(32, 8, 4), (64, 4, 2), (64, 3, 1)],
             hiddens=[256],

@@ -4,8 +4,9 @@ from common.schedules import LinearSchedule
 
 
 class Player:
-    def __init__(self, env, policy, exploration: LinearSchedule, param_noise):
-        self.__env = env
+    def __init__(self, env_id, model_dir, exploration: LinearSchedule, param_noise):
+        self.__env_id = env_id
+        self.
         self.__continue_playing = None
         self.__policy = policy
         self.__exploration = exploration
@@ -15,7 +16,7 @@ class Player:
     def terminating(self):
         self.__continue_playing = False
 
-    def run(self):
+    def playing(self):
         t = 0
         while self.__continue_playing:
             # Take action and update exploration to the newest value
