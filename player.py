@@ -1,19 +1,24 @@
+import os
+from enum import Enum
 import multiprocessing
 import numpy as np
-import tensorflow as tf
 
 from common import create_gvgai_environment
 from common.schedules import LinearSchedule
-from simple import ActWrapper, Message
+
+
+class Message(Enum):
+    UPDATE = 1
+    TERMINATE = 2
 
 
 class Player:
     def __init__(self, env_id, policy_path, exploration: LinearSchedule, param_noise, connection):
         self.__env, _, _ = create_gvgai_environment(env_id)
         self.__continue_playing = None
-        self.__graph = tf.Graph()
-        self.__session = tf.Session(graph=self.__graph)
         self.__policy = None
+        self.__graph = None
+        self.__session = None
         self.__policy_path = policy_path
         self.__load_policy()
         self.__exploration = exploration
@@ -24,6 +29,7 @@ class Player:
         self.__continue_playing = False
 
     def play(self):
+        self.__continue_playing = True
         with self.__session.as_default():
             self.__play()
         self.__env.close()
@@ -69,6 +75,13 @@ class Player:
         return np.array(observation, copy=False)[None]
 
     def __load_policy(self):
+        os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+        import tensorflow as tf
+        from act_wrapper import ActWrapper
+        if self.__graph is None:
+            self.__graph = tf.Graph()
+        if self.__session is None:
+            self.__session = tf.Session(graph=self.__graph)
         with self.__graph.as_default():
             with tf.device("cpu"):
                 with self.__session.as_default():
@@ -89,6 +102,7 @@ class Player:
         def create_and_play():
             player = Player(env_id, policy_path, exploration, param_noise, player_connection)
             player.play()
+            print("A player finished its duty")
 
         player_process = multiprocessing.Process(target=lambda: create_and_play())
         player_process.start()

@@ -1,25 +1,21 @@
 import os
 import signal
 import pickle
-import tempfile
 import tensorflow as tf
-import zipfile
-import cloudpickle
 import numpy as np
-from enum import Enum
 
-import player
+from player import Message
 import common.tf_util as U
-from common.tf_util import load_state, save_state
 import logger
 from common.schedules import LinearSchedule
 from common import create_gvgai_environment
 
-from build_graph import build_act, build_train
+from build_graph import build_train
 from replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 from utils import ObservationInput
+from common.tf_util import load_state, save_state
 from expert_decision_maker import ExpertDecisionMaker
-
+from act_wrapper import ActWrapper
 
 terminate_learning = False
 
@@ -30,57 +26,9 @@ def signal_handler(signal_id, frame):
     print("We should terminate the learning process ...")
 
 
-class Message(Enum):
-    UPDATE = 1
-    TERMINATE = 2
-
-
 def send_message_to_all(connections, message):
     for connection in connections:
         connection.send(message)
-
-
-class ActWrapper(object):
-    def __init__(self, act, act_params):
-        self._act = act
-        self._act_params = act_params
-
-    @staticmethod
-    def load(path):
-        with open(path, "rb") as f:
-            model_data, act_params = cloudpickle.load(f)
-        act = build_act(**act_params)
-        with tempfile.TemporaryDirectory() as td:
-            arc_path = os.path.join(td, "packed.zip")
-            with open(arc_path, "wb") as f:
-                f.write(model_data)
-
-            zipfile.ZipFile(arc_path, 'r', zipfile.ZIP_DEFLATED).extractall(td)
-            load_state(os.path.join(td, "model"))
-
-        return ActWrapper(act, act_params)
-
-    def __call__(self, *args, **kwargs):
-        return self._act(*args, **kwargs)
-
-    def save(self, path=None):
-        """Save model to a pickle located at `path`"""
-        if path is None:
-            path = os.path.join(logger.get_dir(), "model.pkl")
-
-        with tempfile.TemporaryDirectory() as td:
-            save_state(os.path.join(td, "model"))
-            arc_name = os.path.join(td, "packed.zip")
-            with zipfile.ZipFile(arc_name, 'w') as zipf:
-                for root, dirs, files in os.walk(td):
-                    for fname in files:
-                        file_path = os.path.join(root, fname)
-                        if file_path != arc_name:
-                            zipf.write(file_path, os.path.relpath(file_path, td))
-            with open(arc_name, "rb") as f:
-                model_data = f.read()
-        with open(path, "wb") as f:
-            cloudpickle.dump((model_data, self._act_params), f)
 
 
 def load(path):
@@ -124,7 +72,8 @@ def learn(env_id,
           prioritized_replay_beta_iters=None,
           prioritized_replay_eps=1e-6,
           param_noise=False,
-          number_of_agents=16):
+          player_processes=None,
+          player_connections=None):
     env, _, _ = create_gvgai_environment(env_id)
 
     # Create all the functions necessary to train the model
@@ -150,8 +99,9 @@ def learn(env_id,
     session = tf.Session()
     session.__enter__()
     policy_path = os.path.join(model_dir, "Policy.pkl")
-    if os.path.isfile(policy_path):
-        act = ActWrapper.load(policy_path)
+    model_path = os.path.join(model_dir, "model", "model")
+    if os.path.isdir(os.path.join(model_dir, "model")):
+        load_state(model_path)
     else:
         act_params = {
             'make_obs_ph': make_obs_ph,
@@ -159,7 +109,11 @@ def learn(env_id,
             'num_actions': env.action_space.n,
         }
         act = ActWrapper(act, act_params)
+        # Initialize the parameters and copy them to the target network.
+        U.initialize()
+        update_target()
         act.save(policy_path)
+        save_state(model_path)
     env.close()
     # Create the replay buffer
     if prioritized_replay:
@@ -188,19 +142,8 @@ def learn(env_id,
                                  initial_p=1.0,
                                  final_p=exploration_final_eps)
 
-    # Initialize the parameters and copy them to the target network.
-    U.initialize()
-    update_target()
-
     episode_rewards = list()
     saved_mean_reward = None
-
-    player_processes = list()
-    player_connections = list()
-    for i in range(number_of_agents):
-        process, connection = player.Player.player_process_factory(env_id, policy_path, exploration, param_noise)
-        player_processes.append(process)
-        player_connections.append(process)
 
     signal.signal(signal.SIGQUIT, signal_handler)
     global terminate_learning
@@ -218,6 +161,8 @@ def learn(env_id,
                 totla_time_stpes += 1
 
         if timestep < learning_starts:
+            if timestep % 10 == 0:
+                print("not strated yet")
             continue
 
         if timestep % train_freq == 0:
@@ -248,6 +193,7 @@ def learn(env_id,
 
         if timestep % checkpoint_freq == 0 and mean_100ep_reward > saved_mean_reward:
             act.save(policy_path)
+            save_state(model_path)
             saved_mean_reward = mean_100ep_reward
             send_message_to_all(player_connections, Message.UPDATE)
 
