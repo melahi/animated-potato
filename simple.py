@@ -148,7 +148,7 @@ def learn(env_id,
     signal.signal(signal.SIGQUIT, signal_handler)
     global terminate_learning
 
-    totla_time_stpes = 0
+    total_timesteps = 0
     for timestep in range(max_timesteps):
         if terminate_learning:
             break
@@ -158,9 +158,9 @@ def learn(env_id,
             episode_rewards.append(reward)
             for experience in experiences:
                 replay_buffer.add(*experience)
-                totla_time_stpes += 1
+                total_timesteps += 1
 
-        if timestep < learning_starts:
+        if total_timesteps < learning_starts:
             if timestep % 10 == 0:
                 print("not strated yet")
             continue
@@ -169,7 +169,7 @@ def learn(env_id,
             for i in range(train_steps):
                 # Minimize the error in Bellman's equation on a batch sampled from replay buffer.
                 if prioritized_replay:
-                    experience = replay_buffer.sample(batch_size, beta=beta_schedule.value(totla_time_stpes))
+                    experience = replay_buffer.sample(batch_size, beta=beta_schedule.value(total_timesteps))
                     (obses_t, actions, rewards, obses_tp1, dones, weights, batch_idxes) = experience
                 else:
                     obses_t, actions, rewards, obses_tp1, dones = replay_buffer.sample(batch_size)
@@ -188,7 +188,7 @@ def learn(env_id,
         if print_freq is not None and timestep % print_freq == 0:
             logger.record_tabular("episodes", num_episodes)
             logger.record_tabular("mean 100 episode reward", mean_100ep_reward)
-            logger.record_tabular("% time spent exploring", int(100 * exploration.value(totla_time_stpes)))
+            logger.record_tabular("% time spent exploring", int(100 * exploration.value(total_timesteps)))
             logger.dump_tabular()
 
         if timestep % checkpoint_freq == 0 and mean_100ep_reward > saved_mean_reward:

@@ -1,4 +1,5 @@
 import os
+import time
 import argparse
 from common import set_global_seeds, create_gvgai_environment
 from common.schedules import LinearSchedule
@@ -17,6 +18,8 @@ def create_players(env_id, model_dir, exploration_fraction, max_timesteps, explo
         process, connection = Player.player_process_factory(env_id, policy_path, exploration, param_noise)
         player_processes.append(process)
         player_connections.append(connection)
+        time.sleep(1)
+        print("agent {} is created".format(i))
     return player_processes, player_connections
 
 
@@ -37,7 +40,7 @@ def main():
 
     model_dir = "models/{}/".format(game_name)
     os.makedirs(model_dir, exist_ok=True)
-    player_processes, player_connections = create_players(args.env, model_dir, 0.1, args.num_timesteps, 0.01, False, 1)
+    player_processes, player_connections = create_players(args.env, model_dir, 0.1, args.num_timesteps, 0.01, False, 8)
 
     import models
     from simple import learn
