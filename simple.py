@@ -23,7 +23,7 @@ terminate_learning = False
 def signal_handler(signal_id, frame):
     global terminate_learning
     terminate_learning = True
-    print("We should terminate the learning process ...")
+    print("We should terminate the learning process ...", flush=True)
 
 
 def send_message_to_all(connections, message):
@@ -143,7 +143,7 @@ def learn(env_id,
                                  final_p=exploration_final_eps)
 
     episode_rewards = list()
-    saved_mean_reward = None
+    saved_mean_reward = -999999999
 
     signal.signal(signal.SIGQUIT, signal_handler)
     global terminate_learning
@@ -162,7 +162,7 @@ def learn(env_id,
 
         if total_timesteps < learning_starts:
             if timestep % 10 == 0:
-                print("not strated yet")
+                print("not strated yet", flush=True)
             continue
 
         if timestep % train_freq == 0:
@@ -195,6 +195,8 @@ def learn(env_id,
             act.save(policy_path)
             save_state(model_path)
             saved_mean_reward = mean_100ep_reward
+            with open(replay_buffer_path, 'wb') as output_file:
+                pickle.dump(replay_buffer, output_file, pickle.HIGHEST_PROTOCOL)
             send_message_to_all(player_connections, Message.UPDATE)
 
     send_message_to_all(player_connections, Message.TERMINATE)
