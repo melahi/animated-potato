@@ -1,28 +1,42 @@
+import multiprocessing
 import numpy as np
+import tensorflow as tf
 
+from common import create_gvgai_environment
 from common.schedules import LinearSchedule
+from simple import ActWrapper, Message
 
 
 class Player:
-    def __init__(self, env_id, model_dir, exploration: LinearSchedule, param_noise):
-        self.__env_id = env_id
-        self.
+    def __init__(self, env_id, policy_path, exploration: LinearSchedule, param_noise, connection):
+        self.__env, _, _ = create_gvgai_environment(env_id)
         self.__continue_playing = None
-        self.__policy = policy
+        self.__graph = tf.Graph()
+        self.__session = tf.Session(graph=self.__graph)
+        self.__policy = None
+        self.__policy_path = policy_path
+        self.__load_policy()
         self.__exploration = exploration
         self.__param_noise = param_noise
-        self.__experience_list = list()
+        self.__connection = connection
 
     def terminating(self):
         self.__continue_playing = False
 
-    def playing(self):
+    def play(self):
+        with self.__session.as_default():
+            self.__play()
+        self.__env.close()
+
+    def __play(self):
         t = 0
         while self.__continue_playing:
             # Take action and update exploration to the newest value
             reset = True
             observation = self.__env.reset()
             done = False
+            episode_experiences = list()
+            episode_reward = 0
             while not done:
                 kwargs = {}
                 if not self.__param_noise:
@@ -42,9 +56,11 @@ class Player:
                 reset = False
                 new_observation, reward, done, _ = self.__env.step(action)
                 # Store transition in the replay buffer.
-                self.__experience_list.append((observation, action, reward, new_observation, float(done), False))
+                episode_experiences.append((observation, action, reward, new_observation, float(done), False))
+                episode_reward += reward
                 observation = new_observation
-        self.__env.close()
+            self.__connection.send((episode_experiences, episode_reward))
+            self.__check_commander_messages()
 
     @staticmethod
     def prepare_observation(observation):
@@ -52,3 +68,28 @@ class Player:
             return {key: np.array(value, copy=False)[None] for key, value in observation.items()}
         return np.array(observation, copy=False)[None]
 
+    def __load_policy(self):
+        with self.__graph.as_default():
+            with tf.device("cpu"):
+                with self.__session.as_default():
+                    self.__policy = ActWrapper.load(self.__policy_path)
+
+    def __check_commander_messages(self):
+        while self.__connection.poll():
+            message = self.__connection.recv()
+            if message == Message.UPDATE:
+                self.__load_policy()
+            elif message == Message.TERMINATE:
+                self.terminating()
+
+    @staticmethod
+    def player_process_factory(env_id, policy_path, exploration: LinearSchedule, param_noise):
+        commander_connection, player_connection = multiprocessing.Pipe(True)
+
+        def create_and_play():
+            player = Player(env_id, policy_path, exploration, param_noise, player_connection)
+            player.play()
+
+        player_process = multiprocessing.Process(target=lambda: create_and_play())
+        player_process.start()
+        return player_process, commander_connection

@@ -43,14 +43,15 @@ def main():
           buffer_size=1000,
           exploration_fraction=0.1,
           exploration_final_eps=0.01,
-          train_freq=4,
-          learning_starts=10000,
-          target_network_update_freq=1000,
+          train_freq=1,
+          learning_starts=500,
+          target_network_update_freq=100,
           gamma=0.99,
           prioritized_replay=bool(args.prioritized),
           prioritized_replay_alpha=args.prioritized_replay_alpha,
           checkpoint_freq=args.checkpoint_freq,
-          model_dir=model_dir
+          model_dir=model_dir,
+          number_of_agents=16
           )
 
     env.close()

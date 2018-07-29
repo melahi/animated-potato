@@ -2,17 +2,18 @@ import os
 import signal
 import pickle
 import tempfile
-
 import tensorflow as tf
 import zipfile
 import cloudpickle
 import numpy as np
+from enum import Enum
 
-import utils
+import player
 import common.tf_util as U
 from common.tf_util import load_state, save_state
 import logger
 from common.schedules import LinearSchedule
+from common import create_gvgai_environment
 
 from build_graph import build_act, build_train
 from replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
@@ -20,13 +21,23 @@ from utils import ObservationInput
 from expert_decision_maker import ExpertDecisionMaker
 
 
-TERMINATE_LEARNING = False
+terminate_learning = False
 
 
 def signal_handler(signal_id, frame):
-    global TERMINATE_LEARNING
-    TERMINATE_LEARNING = True
+    global terminate_learning
+    terminate_learning = True
     print("We should terminate the learning process ...")
+
+
+class Message(Enum):
+    UPDATE = 1
+    TERMINATE = 2
+
+
+def send_message_to_all(connections, message):
+    for connection in connections:
+        connection.send(message)
 
 
 class ActWrapper(object):
@@ -39,8 +50,6 @@ class ActWrapper(object):
         with open(path, "rb") as f:
             model_data, act_params = cloudpickle.load(f)
         act = build_act(**act_params)
-        sess = tf.Session()
-        sess.__enter__()
         with tempfile.TemporaryDirectory() as td:
             arc_path = os.path.join(td, "packed.zip")
             with open(arc_path, "wb") as f:
@@ -88,105 +97,41 @@ def load(path):
         function that takes a batch of observations
         and returns actions.
     """
+    session = tf.Session()
+    session.__enter__()
     return ActWrapper.load(path)
 
 
-def learn(env,
+def learn(env_id,
           q_func,
           lr=5e-4,
-          max_timesteps=100000,
+          max_timesteps=10000,
           buffer_size=5000,
           exploration_fraction=0.1,
           exploration_final_eps=0.02,
           train_freq=1,
+          train_steps=10,
+          learning_starts=500,
           batch_size=32,
-          print_freq=100,
-          checkpoint_freq=10000,
+          print_freq=10,
+          checkpoint_freq=100,
           model_dir=None,
-          learning_starts=1000,
           gamma=1.0,
-          target_network_update_freq=500,
+          target_network_update_freq=50,
           prioritized_replay=False,
           prioritized_replay_alpha=0.6,
           prioritized_replay_beta0=0.4,
           prioritized_replay_beta_iters=None,
           prioritized_replay_eps=1e-6,
           param_noise=False,
-          callback=None):
-    """Train a deepq model.
+          number_of_agents=16):
+    env, _, _ = create_gvgai_environment(env_id)
 
-    Parameters
-    -------
-    env: gym.Env
-        environment to train on
-    q_func: (tf.Variable, int, str, bool) -> tf.Variable
-        the model that takes the following inputs:
-            observation_in: object
-                the output of observation placeholder
-            num_actions: int
-                number of actions
-            scope: str
-            reuse: bool
-                should be passed to outer variable scope
-        and returns a tensor of shape (batch_size, num_actions) with values of every action.
-    lr: float
-        learning rate for adam optimizer
-    max_timesteps: int
-        number of env steps to optimizer for
-    buffer_size: int
-        size of the replay buffer
-    exploration_fraction: float
-        fraction of entire training period over which the exploration rate is annealed
-    exploration_final_eps: float
-        final value of random action probability
-    train_freq: int
-        update the model every `train_freq` steps.
-        set to None to disable printing
-    batch_size: int
-        size of a batched sampled from replay buffer for training
-    print_freq: int
-        how often to print out training progress
-        set to None to disable printing
-    checkpoint_freq: int
-        how often to save the model. This is so that the best version is restored
-        at the end of the training. If you do not wish to restore the best version at
-        the end of the training set this variable to None.
-    learning_starts: int
-        how many steps of the model to collect transitions for before learning starts
-    gamma: float
-        discount factor
-    target_network_update_freq: int
-        update the target network every `target_network_update_freq` steps.
-    prioritized_replay: True
-        if True prioritized replay buffer will be used.
-    prioritized_replay_alpha: float
-        alpha parameter for prioritized replay buffer
-    prioritized_replay_beta0: float
-        initial value of beta for prioritized replay buffer
-    prioritized_replay_beta_iters: int
-        number of iterations over which beta will be annealed from initial value
-        to 1.0. If set to None equals to max_timesteps.
-    prioritized_replay_eps: float
-        epsilon to add to the TD errors when updating priorities.
-    callback: (locals, globals) -> None
-        function called at every steps with state of the algorithm.
-        If callback returns true training stops.
-
-    Returns
-    -------
-    act: ActWrapper
-        Wrapper over act function. Adds ability to save it and load it.
-        See header of baselines/deepq/categorical.py for details on the act function.
-    """
     # Create all the functions necessary to train the model
-    expert_decision_maker = ExpertDecisionMaker(env=env)
-
-    sess = tf.Session()
-    sess.__enter__()
+    # expert_decision_maker = ExpertDecisionMaker(env=env)
 
     # capture the shape outside the closure so that the env object is not serialized
     # by cloudpickle when serializing make_obs_ph
-
     observation_space = env.observation_space
 
     def make_obs_ph(name):
@@ -202,14 +147,20 @@ def learn(env,
         param_noise=param_noise
     )
 
-    act_params = {
-        'make_obs_ph': make_obs_ph,
-        'q_func': q_func,
-        'num_actions': env.action_space.n,
-    }
-
-    act = ActWrapper(act, act_params)
-
+    session = tf.Session()
+    session.__enter__()
+    policy_path = os.path.join(model_dir, "Policy.pkl")
+    if os.path.isfile(policy_path):
+        act = ActWrapper.load(policy_path)
+    else:
+        act_params = {
+            'make_obs_ph': make_obs_ph,
+            'q_func': q_func,
+            'num_actions': env.action_space.n,
+        }
+        act = ActWrapper(act, act_params)
+        act.save(policy_path)
+    env.close()
     # Create the replay buffer
     if prioritized_replay:
         replay_buffer_path = os.path.join(model_dir, "Prioritized_replay.pkl")
@@ -232,7 +183,6 @@ def learn(env,
             replay_buffer = ReplayBuffer(buffer_size)
         beta_schedule = None
 
-    policy_path = os.path.join(model_dir, "Policy.pkl")
     # Create the schedule for exploration starting from 1.
     exploration = LinearSchedule(schedule_timesteps=int(exploration_fraction * max_timesteps),
                                  initial_p=1.0,
@@ -242,77 +192,39 @@ def learn(env,
     U.initialize()
     update_target()
 
-    episode_rewards = [0.0]
+    episode_rewards = list()
     saved_mean_reward = None
-    obs = env.reset()
-    reset = True
+
+    player_processes = list()
+    player_connections = list()
+    for i in range(number_of_agents):
+        process, connection = player.Player.player_process_factory(env_id, policy_path, exploration, param_noise)
+        player_processes.append(process)
+        player_connections.append(process)
 
     signal.signal(signal.SIGQUIT, signal_handler)
-    global TERMINATE_LEARNING
+    global terminate_learning
 
-    with tempfile.TemporaryDirectory() as td:
-        td = model_dir or td
+    totla_time_stpes = 0
+    for timestep in range(max_timesteps):
+        if terminate_learning:
+            break
 
-        model_file = os.path.join(td, "model", "model")
-        model_saved = False
-        if tf.train.latest_checkpoint(td) is not None:
-            load_state(model_file)
-            logger.log('Loaded model from {}'.format(model_file))
-            model_saved = True
+        for connection in player_connections:
+            experiences, reward = connection.recv()
+            episode_rewards.append(reward)
+            for experience in experiences:
+                replay_buffer.add(*experience)
+                totla_time_stpes += 1
 
-        action = env_action = None
-        decide_by_expert = True
-        for t in range(max_timesteps):
-            if TERMINATE_LEARNING:
-                break
+        if timestep < learning_starts:
+            continue
 
-            if callback is not None:
-                if callback(locals(), globals()):
-                    break
-            if decide_by_expert:
-                env.render()
-                action = env_action = expert_decision_maker.decide()
-                if env_action is None:
-                    decide_by_expert = False
-                    print("Expert became tired ...")
-            if not decide_by_expert:
-                # Take action and update exploration to the newest value
-                kwargs = {}
-                if not param_noise:
-                    update_eps = exploration.value(t)
-                    update_param_noise_threshold = 0.
-                else:
-                    update_eps = 0.
-                    # Compute the threshold such that the KL divergence between perturbed and non-perturbed
-                    # policy is comparable to eps-greedy exploration with eps = exploration.value(t).
-                    # See Appendix C.1 in Parameter Space Noise for Exploration, Plappert et al., 2017
-                    # for detailed explanation.
-                    update_param_noise_threshold = -np.log(1. - exploration.value(t) + exploration.value(t) / float(env.action_space.n))
-                    kwargs['reset'] = reset
-                    kwargs['update_param_noise_threshold'] = update_param_noise_threshold
-                    kwargs['update_param_noise_scale'] = True
-                prepared_obs = utils.appending(None, obs)
-                if type(prepared_obs) == dict:
-                    prepared_obs = {key: np.array(value, copy=False) for key, value in prepared_obs.items()}
-                else:
-                    prepared_obs = np.array(prepared_obs, copy=False)
-                action = act(prepared_obs, update_eps=update_eps, **kwargs)[0]
-                env_action = action
-            reset = False
-            new_obs, rew, done, _ = env.step(env_action)
-            # Store transition in the replay buffer.
-            replay_buffer.add(obs, action, rew, new_obs, float(done), decide_by_expert)
-            obs = new_obs
-
-            episode_rewards[-1] += rew
-            if done:
-                obs = env.reset()
-                episode_rewards.append(0.0)
-                reset = True
-            if t > learning_starts and t % train_freq == 0:
+        if timestep % train_freq == 0:
+            for i in range(train_steps):
                 # Minimize the error in Bellman's equation on a batch sampled from replay buffer.
                 if prioritized_replay:
-                    experience = replay_buffer.sample(batch_size, beta=beta_schedule.value(t))
+                    experience = replay_buffer.sample(batch_size, beta=beta_schedule.value(totla_time_stpes))
                     (obses_t, actions, rewards, obses_tp1, dones, weights, batch_idxes) = experience
                 else:
                     obses_t, actions, rewards, obses_tp1, dones = replay_buffer.sample(batch_size)
@@ -322,35 +234,32 @@ def learn(env,
                     new_priorities = np.abs(td_errors) + prioritized_replay_eps
                     replay_buffer.update_priorities(batch_idxes, new_priorities)
 
-            if t > learning_starts and t % target_network_update_freq == 0:
-                # Update target network periodically.
-                update_target()
+        if timestep % target_network_update_freq == 0:
+            # Update target network periodically.
+            update_target()
 
-            mean_100ep_reward = round(np.mean(episode_rewards[-101:-1]), 1)
-            num_episodes = len(episode_rewards)
-            if done and print_freq is not None and len(episode_rewards) % print_freq == 0:
-                logger.record_tabular("steps", t)
-                logger.record_tabular("episodes", num_episodes)
-                logger.record_tabular("mean 100 episode reward", mean_100ep_reward)
-                logger.record_tabular("% time spent exploring", int(100 * exploration.value(t)))
-                logger.dump_tabular()
+        mean_100ep_reward = round(np.mean(episode_rewards[-101:-1]), 1)
+        num_episodes = len(episode_rewards)
+        if print_freq is not None and timestep % print_freq == 0:
+            logger.record_tabular("episodes", num_episodes)
+            logger.record_tabular("mean 100 episode reward", mean_100ep_reward)
+            logger.record_tabular("% time spent exploring", int(100 * exploration.value(totla_time_stpes)))
+            logger.dump_tabular()
 
-            if (checkpoint_freq is not None and t > learning_starts and
-                    num_episodes > 100 and t % checkpoint_freq == 0):
-                if saved_mean_reward is None or mean_100ep_reward > saved_mean_reward:
-                    if print_freq is not None:
-                        logger.log("Saving model due to mean reward increase: {} -> {}".format(
-                                   saved_mean_reward, mean_100ep_reward))
-                    save_state(model_file)
-                    act.save(policy_path)
-                    model_saved = True
-                    saved_mean_reward = mean_100ep_reward
-        if model_saved:
-            if print_freq is not None:
-                logger.log("Restored model with mean reward: {}".format(saved_mean_reward))
-            load_state(model_file)
+        if timestep % checkpoint_freq == 0 and mean_100ep_reward > saved_mean_reward:
+            act.save(policy_path)
+            saved_mean_reward = mean_100ep_reward
+            send_message_to_all(player_connections, Message.UPDATE)
 
-        with open(replay_buffer_path, 'wb') as output_file:
-            pickle.dump(replay_buffer, output_file, pickle.HIGHEST_PROTOCOL)
+    send_message_to_all(player_connections, Message.TERMINATE)
+    if mean_100ep_reward > saved_mean_reward:
+        act.save(policy_path)
+    with open(replay_buffer_path, 'wb') as output_file:
+        pickle.dump(replay_buffer, output_file, pickle.HIGHEST_PROTOCOL)
+    for player_process in player_processes:
+        player_process.join()
+        # player_process.terminate()
 
-    return act
+    return act.load(policy_path)
+
+
