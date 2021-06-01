@@ -33,6 +33,6 @@ tensorboard==1.9.0
 tensorflow-gpu>=1.9.0
 termcolor==1.1.0
 tqdm==4.23.4
-urllib3==1.23
+urllib3==1.26.5
 Werkzeug==0.14.1
 zmq==0.0.0
