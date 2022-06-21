@@ -16,7 +16,7 @@ idna==2.7
 joblib==0.12.1
 Markdown==2.6.11
 mpi4py==3.0.0
-numpy==1.15.0
+numpy==1.22.0
 opencv-python==3.4.2.17
 Pillow==5.2.0
 progressbar2==3.38.0
