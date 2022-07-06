@@ -11,7 +11,7 @@ gast==0.2.0
 grpcio==1.13.0
 gym==0.10.5
 -e git+https://github.com/rubenrtorrado/GVGAI_GYM.git@094ed7daaf7a4b696632e3086a92c7f1abb6bc2c#egg=gym_gvgai
-html5lib==0.9999999
+html5lib==0.999999999
 idna==2.7
 joblib==0.12.1
 Markdown==2.6.11
