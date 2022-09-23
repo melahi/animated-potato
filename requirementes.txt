@@ -20,7 +20,7 @@ numpy==1.15.0
 opencv-python==3.4.2.17
 Pillow==5.2.0
 progressbar2==3.38.0
-protobuf==3.6.0
+protobuf==3.18.3
 pyglet==1.3.2
 pynput==1.4
 python-utils==2.3.0
