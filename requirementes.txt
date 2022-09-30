@@ -13,7 +13,7 @@ gym==0.10.5
 -e git+https://github.com/rubenrtorrado/GVGAI_GYM.git@094ed7daaf7a4b696632e3086a92c7f1abb6bc2c#egg=gym_gvgai
 html5lib==0.9999999
 idna==2.7
-joblib==0.12.1
+joblib==1.2.0
 Markdown==2.6.11
 mpi4py==3.0.0
 numpy==1.15.0
